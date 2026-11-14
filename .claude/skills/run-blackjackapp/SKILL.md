@@ -36,8 +36,9 @@ PYTHONIOENCODING=utf-8 .venv/Scripts/python .claude/skills/run-blackjackapp/driv
 - Without it, the driver plays one round: it clicks "Play", bets `--bet`
   (20 by default; the game accepts 10 up to the player's money, 100 at
   start), then plays one digit of `--actions` at each "Choose an action"
-  prompt: 1 Hit, 2 Stand, 3 Double, 4 Split, 5 Surrender. Once the
-  list runs out, it plays 2. It declines insurance (`--insurance` takes it)
+  prompt: 1 Hit, 2 Stand, 3 Double, 4 Split, 5 Surrender. After a split,
+  each hand asks again with only 1 to 3, so `--actions 432` splits, doubles
+  hand 1 and stands on hand 2. Once the list runs out, it plays 2. It declines insurance (`--insurance` takes it)
   and answers "OK" to every message until "Round over", then quits.
 - The driver prints every game message to stdout (`Message [title]: …`).
   Screenshots go to `--out` (`%TEMP%\blackjack-run` by default), numbered
@@ -57,7 +58,8 @@ matches (`ACTION_PROMPT`, `INSURANCE`, `ROUND_OVER`) at the top of `driver.py`.
 The shuffle always deals the same cards, and the dealer never shows an ace.
 To test another deal, run the driver on a throwaway copy of the game whose
 `Deck.shuffle()` puts chosen cards on top (draw order: player, dealer, player,
-then the player's hits, then the dealer's second card):
+then the player's hits, then the dealer's second card; after a split: hand 1's
+second card and hits, then hand 2's):
 
 ```bash
 T="$TEMP/bjcopy"; rm -rf "$T"; mkdir -p "$T"
@@ -69,6 +71,7 @@ b = a + "        top = [c for n in os.environ.get('BJ_FORCE_TOP', '').split(',')
 assert a in s; open(p, 'w', encoding='utf-8').write(s.replace(a, b))
 PY
 BJ_FORCE_TOP=10_hearts,A_spades,9_clubs,K_hearts PYTHONIOENCODING=utf-8 .venv/Scripts/python "$T/.claude/skills/run-blackjackapp/driver.py" --bet 20 --actions 2 --insurance --out "$TEMP/bj-ins-bj"
+BJ_FORCE_TOP=8_hearts,6_spades,8_clubs,3_hearts,10_spades,10_hearts,10_clubs,7_diamonds PYTHONIOENCODING=utf-8 .venv/Scripts/python "$T/.claude/skills/run-blackjackapp/driver.py" --bet 20 --actions 432 --out "$TEMP/bj-split8"
 ```
 
 The driver computes the game folder from its own path, so the copy's driver

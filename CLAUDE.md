@@ -25,6 +25,7 @@ python BlackJack.py
 - **`BlackJack`**: controller and view at once. `__init__` builds the window and starts `mainloop()`. A whole round runs inside a single synchronous call to `play()` (the "Play" button), which chains betting, dealing, the player's choices (`askinteger` with actions 1 to 5), `dealerTurn()` (draws up to 17), then settlement through `winPlayer` / `losePlayer` / `tiePlayer`.
 - **UI**: everything is drawn on a single `Canvas`. The displayed texts (money, bet, score, remaining cards, RC) are canvas item IDs, passed to the `update*` methods and `updateAfterHit`. Animations go through `showGIF(..., autoDestruction=True)`, which calls `time.sleep` on the UI thread; the game flow relies on these blocking calls and on modal dialogs.
 - **Betting**: the round is settled on `stake` (`initialBet`, doubled by a double down, allowed on the first two cards only). Insurance (`insuranceBet`, half the bet) is debited when taken and settled with the round, since the dealer's second card is only drawn in `dealerTurn()`: paid 2:1 on a dealer BlackJack, lost otherwise or on surrender.
+- **Split**: a pair (same rank) on the first two cards can be split once if the player can match the bet. `play()` keeps the two hands in `hands` and swaps each into `Player.hand` in turn: `playSplitHand()` plays one (Hit, Stand, Double down), and `settleHand()` settles each against the dealer with its own entry in `stakes`. Split aces get one card each, and a two-card 21 after a split pays 1:1, not 3:2. The second hand is drawn one row lower (`row=1`), indented by `SPLIT_INDENT`.
 - Beware, `showGIF(image, tag, autoDestruction=False, seconds=1)` is sometimes called with its positional arguments swapped (`hitChoice` passes `2, True`).
 
 ## Commits
@@ -43,4 +44,4 @@ One emoji per commit: pick the one for the main intent of the change. Commit onl
 
 ## Incomplete features
 
-Splitting is only sketched (the code playing both hands is commented out), and both the end of the file and `play()` contain `TODO`s about the remaining rules (split limits, burnt cards, empty deck, etc.).
+Re-splitting is not supported, and both the end of the file and `play()` contain `TODO`s about the remaining rules (re-splitting, burnt cards, empty deck, etc.).

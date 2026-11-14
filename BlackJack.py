@@ -29,6 +29,7 @@ FONT_TITLE, FONT_NORMAL , FONT_BUTTON = ('Tahoma',16),('Tahoma',10),('Tahoma',10
 WIDTH_IMAGE,HEIGHT_IMAGE = 130,180
 WIDTH_GIF, HEIGHT_GIF = 384,270
 RATIO_GIF_WIDTH,RATIO_GIF_HEIGHT = 0.35,0.32
+SPLIT_INDENT = 70 # The second split hand is indented so the Play button does not cover it
 
 # Card images: <value>_<suit>.gif
 values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A']
@@ -460,16 +461,21 @@ class BlackJack(object):
 
     ## Hit
 
-    def hitChoice(self,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount):
+    def hitChoice(self,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount,row=0):
         self.showGIF('hit.gif','HIT',2,True)
+        self.drawPlayerCard(cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount,row)
+
+    ## Draw a card into the player's current hand, shown on row 0 (main hand) or row 1 (second split hand)
+
+    def drawPlayerCard(self,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount,row=0):
         PLAYER_CARD = self.getDeck().draw()
 
         if PLAYER_CARD!=None:
             self.updateAfterHit(PLAYER_CARD,cardsRemaining,relativeCount,scorePlayer)
             PLAYER_IMAGE, n = PLAYER_CARD.showCard(),self.getPlayer().getCardsCount()
-            self.showImage(PLAYER_IMAGE,(n-1)*(WIDTH_IMAGE+10)+10,MIDDLE_VERTICAL_CANVAS+50)
+            self.showImage(PLAYER_IMAGE,(n-1)*(WIDTH_IMAGE+10)+10+row*SPLIT_INDENT,MIDDLE_VERTICAL_CANVAS+50+row*(HEIGHT_IMAGE+10))
         else:
-            pass
+            showerror('BlackJack','No cards left in the deck')
 
     ## Stand
 
@@ -478,28 +484,24 @@ class BlackJack(object):
 
     ## Double down
 
-    def doubleChoice(self,initialBet,betPlayer,moneyPlayer,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount):
+    def doubleChoice(self,initialBet,betPlayer,moneyPlayer,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount,row=0):
         self.showGIF('double.gif','DOUBLE',True,2)
         showinfo('BlackJack',"You chose to double your bet. You will draw one last card.")
         self.getPlayer().addBet(initialBet)
         self.updateBetPlayer(betPlayer)
         self.getPlayer().loseMoney(initialBet)
         self.updateMoneyPlayer(moneyPlayer)
-        PLAYER_CARD = self.getDeck().draw()
-
-        if PLAYER_CARD!=None:
-            self.updateAfterHit(PLAYER_CARD,cardsRemaining,relativeCount,scorePlayer)
-            PLAYER_IMAGE, n = PLAYER_CARD.showCard(),self.getPlayer().getCardsCount()
-            self.showImage(PLAYER_IMAGE,(n-1)*(WIDTH_IMAGE+10)+10,MIDDLE_VERTICAL_CANVAS+50)
-
-        else:
-            pass
+        self.drawPlayerCard(cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount,row)
 
     ## Split pairs
 
-    def splitChoice(self,initialBet,betPlayer,moneyPlayer,moneyDealer,cardsRemaining):
+    def splitChoice(self,initialBet,betPlayer,moneyPlayer):
         self.showGIF('split.gif','SPLIT',True,2)
-        showinfo('BlackJack',"You chose to split your pairs. You draw one last card. Your bet is therefore doubled.")
+        showinfo('BlackJack',"You chose to split your pair. Each card starts a hand with its own bet, equal to your initial bet, and you play the hands one after the other.")
+        self.getPlayer().addBet(initialBet)
+        self.updateBetPlayer(betPlayer)
+        self.getPlayer().loseMoney(initialBet)
+        self.updateMoneyPlayer(moneyPlayer)
 
     ## Surrender
 
@@ -514,8 +516,10 @@ class BlackJack(object):
 
     ## Dealer's turn
 
-    def dealerTurn(self,cardsRemaining,TOP_VERTICAL_CANVAS,scoreDealer,relativeCount):
-        showinfo('BlackJack',"Your turn is over. You scored %d points. It is the dealer's turn."%self.getPlayer().getPoints())
+    def dealerTurn(self,cardsRemaining,TOP_VERTICAL_CANVAS,scoreDealer,relativeCount,playerPoints=None):
+        if playerPoints is None:
+            playerPoints = '%d points' % self.getPlayer().getPoints()
+        showinfo('BlackJack',"Your turn is over. You scored %s. It is the dealer's turn." % playerPoints)
         self.getCanvas().delete('hidden')
         self.getCanvas().update()
 
@@ -562,6 +566,77 @@ class BlackJack(object):
 
     def tiePlayer(self):
         return not(self.winPlayer()) and not(self.losePlayer())
+
+    ## Settle the player's current hand against the dealer (label names the hand after a split)
+
+    def settleHand(self,stake,label='',blackjackPays=True):
+        if self.tiePlayer():
+            PlaySound(resource_path('bust.wav'),SND_FILENAME)
+            self.showGIF('tie.gif','TIE',True,2)
+            showinfo('BlackJack',label+'Tie: you get your bet back.')
+            self.getPlayer().winMoney(stake)
+
+        elif self.losePlayer():
+            PlaySound(resource_path('defeat.wav'),SND_FILENAME)
+            showerror('BlackJack',label+'Defeat: you lose your bet.')
+            self.getDealer().winMoney(stake)
+
+        else:
+            PlaySound(resource_path('applause.wav'),SND_FILENAME)
+            self.showGIF('win.gif','WIN',True,2)
+
+            if self.getPlayer().hasBlackJackRegular() and blackjackPays:
+                showinfo('BlackJack',label+'Victory: you got a BlackJack. You get your bet back and win 1.5 times your bet.')
+                self.getPlayer().winMoney(stake)
+                self.getPlayer().winMoney(3/2*stake)
+                self.getDealer().loseMoney(3/2*stake)
+            else:
+                showinfo('BlackJack',label+'Victory: you get your bet back and win your bet once.')
+                self.getPlayer().winMoney(stake)
+                self.getPlayer().winMoney(stake)
+                self.getDealer().loseMoney(stake)
+
+    ## Bust and 21 animations for the player's current hand
+
+    def showHandOutcome(self):
+        if self.getPlayer().hasBust():
+            PlaySound(resource_path('bust.wav'),SND_FILENAME)
+            self.showGIF('bust.gif','BUST',True,2)
+
+        # BlackJack with more than 2 cards
+        if self.getPlayer().hasBlackJackNotRegular():
+            PlaySound(resource_path('congrats.wav'),SND_FILENAME)
+            self.showGIF('player21.gif','PLAYER21',True,2)
+
+    ## Play one hand of a split (Hit, Stand or Double down) until the player stands, doubles, busts or reaches 21, and return its stake
+
+    def playSplitHand(self,number,initialBet,betPlayer,moneyPlayer,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount):
+        row = number-1
+        self.updateScorePlayer(scorePlayer)
+        actions = '\n'.join(['\nHand %d' % number,'(1) Hit','(2) Stand','(3) Double down\n'])
+        while self.getPlayer().hasVersus():
+            choice = askinteger('Choose an action',actions,parent=self.root,minvalue=1,maxvalue=3)
+
+            if choice is None or choice == 2: # Stand
+                self.standChoice()
+                break
+
+            if choice == 1: # Hit
+                self.hitChoice(cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount,row)
+
+            if choice == 3: # Double down
+                if self.getPlayer().getCardsCount() > 2:
+                    showinfo('BlackJack',"You can only double your bet on your first two cards.")
+                    continue
+                if self.getPlayer().getMoney() < initialBet:
+                    showinfo('BlackJack',"You do not have enough money to double your bet.")
+                    continue
+                self.doubleChoice(initialBet,betPlayer,moneyPlayer,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount,row)
+                self.showHandOutcome()
+                return 2*initialBet
+
+        self.showHandOutcome()
+        return initialBet
 
     ## Player's turn
 
@@ -616,7 +691,7 @@ class BlackJack(object):
         playerLabel = self.getCanvas().create_text(10,MIDDLE_VERTICAL_CANVAS-30,text='Player',font=FONT_TITLE,anchor=NW)
         moneyPlayer = self.getCanvas().create_text(10,MIDDLE_VERTICAL_CANVAS,text='Money: %d€'% maximumBet,font=FONT_NORMAL,anchor=NW)
         scorePlayer = self.getCanvas().create_text(10,MIDDLE_VERTICAL_CANVAS+20,text='Score: 0',font=FONT_NORMAL,anchor=NW)
-        betPlayer = self.getCanvas().create_text(80,MIDDLE_VERTICAL_CANVAS+20,text='Bet: 0€', font=FONT_NORMAL,anchor=NW)
+        betPlayer = self.getCanvas().create_text(120,MIDDLE_VERTICAL_CANVAS+20,text='Bet: 0€', font=FONT_NORMAL,anchor=NW)
 
         initialBet = askinteger(title='Initial bet',prompt='How much do you want to bet on this round?',minvalue=minimumBet,maxvalue=maximumBet)
 
@@ -685,6 +760,8 @@ class BlackJack(object):
 
         stake = initialBet # Amount settled at the end of the round, doubled by a double down
 
+        split = False
+
         if self.getPlayer().hasBlackJackRegular():
             PlaySound(resource_path('blackjack.wav'),SND_FILENAME)
             self.showGIF('player21.gif','PLAYER21',True,2)
@@ -692,11 +769,6 @@ class BlackJack(object):
             self.dealerTurn(cardsRemaining,TOP_VERTICAL_CANVAS,scoreDealer,relativeCount)
 
         else:
-# TODO: prevent clicking split without a pair
-            hasPairs = PLAYER_CARD1 == PLAYER_CARD2
-
-            split = False
-
             while self.getPlayer().hasVersus() :
 
                 actions = '\n'.join(['\n(1) Hit','(2) Stand','(3) Double down','(4) Split pairs','(5) Surrender\n'])
@@ -733,50 +805,43 @@ class BlackJack(object):
                     stake = 2*initialBet
                     break
 
-                if choice == 4 and hasPairs: # Split pairs
-                    self.splitChoice(initialBet,betPlayer,moneyPlayer,moneyDealer,cardsRemaining)
+                if choice == 4: # Split pairs
+                    if self.getPlayer().getCardsCount() > 2 or not(PLAYER_CARD1 == PLAYER_CARD2):
+                        showinfo('BlackJack',"You can only split a pair, on your first two cards.")
+                        continue
+                    if self.getPlayer().getMoney() < initialBet:
+                        showinfo('BlackJack',"You do not have enough money to split your pair.")
+                        continue
+                    self.splitChoice(initialBet,betPlayer,moneyPlayer)
                     split = True
                     break
 
-
             if split:
-                hand1, hand2 = [self.getPlayer().hand[0]],[self.getPlayer().hand[1]]
-                bet1, bet2 = initialBet,initialBet
+                # The second card moves down to start the second hand, then each hand gets its second card
+                hands, stakes = [[PLAYER_CARD1],[PLAYER_CARD2]], []
                 self.getCanvas().delete('PLAYER_CARD2')
-                self.getCanvas().update()
-                self.showImage(PLAYER_IMAGE2,10,MIDDLE_VERTICAL_CANVAS+240)
+                self.showImage(PLAYER_IMAGE2,10+SPLIT_INDENT,MIDDLE_VERTICAL_CANVAS+50+HEIGHT_IMAGE+10)
 
-                # showinfo('BlackJack','Card #1')
-                # self.getPlayer().setHand(hand1)
-                # score1 = self.getPlayer().getPoints()
-                #
-                # while self.getPlayer().hasVersus() :
-                #     actionList = ['\n(1) Hit','(2) Stand','(3) Double down','(4) Surrender\n']
-                #     actions = '\n'.join(actionList)
-                #
-                # showinfo('BlackJack','Card #2')
-                # self.getPlayer().setHand(hand2)
-                # score2 = self.getPlayer().getPoints()
-                #
-                # while self.getPlayer().hasVersus() :
-                #     actionList = ['\n(1) Hit','(2) Stand','(3) Double down','(4) Surrender\n']
-                #     actions = '\n'.join(actionList)
+                for number, hand in enumerate(hands, 1):
+                    self.getPlayer().hand = hand
+                    self.drawPlayerCard(cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount,number-1)
+                    if PLAYER_CARD1.isAce(): # Split aces get one card each and no further action
+                        showinfo('BlackJack',"Hand %d: split aces get only one card each." % number)
+                        stakes.append(initialBet)
+                    else:
+                        showinfo('BlackJack',"Hand %d: %d points." % (number,self.getPlayer().getPoints()))
+                        stakes.append(self.playSplitHand(number,initialBet,betPlayer,moneyPlayer,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount))
 
+                points = []
+                for hand in hands:
+                    self.getPlayer().hand = hand
+                    points.append(self.getPlayer().getPoints())
+                self.getCanvas().itemconfigure(scorePlayer,text='Score: %d / %d' % tuple(points))
+                self.dealerTurn(cardsRemaining,TOP_VERTICAL_CANVAS,scoreDealer,relativeCount,'%d and %d points' % tuple(points))
 
-
-            # Bust or not Bust ?
-
-            if self.getPlayer().hasBust():
-                PlaySound(resource_path('bust.wav'),SND_FILENAME)
-                self.showGIF('bust.gif','BUST',True,2)
-
-            # BlackJack with more than 2 cards
-
-            if self.getPlayer().hasBlackJackNotRegular():
-                PlaySound(resource_path('congrats.wav'),SND_FILENAME)
-                self.showGIF('player21.gif','PLAYER21',True,2)
-
-            self.dealerTurn(cardsRemaining,TOP_VERTICAL_CANVAS,scoreDealer,relativeCount)
+            else:
+                self.showHandOutcome()
+                self.dealerTurn(cardsRemaining,TOP_VERTICAL_CANVAS,scoreDealer,relativeCount)
 
         # Results
 
@@ -792,32 +857,12 @@ class BlackJack(object):
                 showinfo('BlackJack','Insurance: the dealer has no BlackJack. You lose your insurance.')
                 self.getDealer().winMoney(insuranceBet)
 
-        if self.tiePlayer():
-            PlaySound(resource_path('bust.wav'),SND_FILENAME)
-            self.showGIF('tie.gif','TIE',True,2)
-            showinfo('BlackJack','Tie: you get your bet back.')
-            self.getPlayer().winMoney(stake)
-
-        elif self.losePlayer():
-            PlaySound(resource_path('defeat.wav'),SND_FILENAME)
-            showerror('BlackJack','Defeat: you lose your bet.')
-            self.getDealer().winMoney(stake)
-
+        if split: # A two-card 21 after a split is not a BlackJack and pays 1:1
+            for number, (hand, handStake) in enumerate(zip(hands, stakes), 1):
+                self.getPlayer().hand = hand
+                self.settleHand(handStake,'Hand %d: ' % number,blackjackPays=False)
         else:
-            PlaySound(resource_path('applause.wav'),SND_FILENAME)
-            self.showGIF('win.gif','WIN',True,2)
-
-
-            if self.getPlayer().hasBlackJackRegular() and not(split):
-                showinfo('BlackJack','Victory: you got a BlackJack. You get your bet back and win 1.5 times your bet.')
-                self.getPlayer().winMoney(stake)
-                self.getPlayer().winMoney(3/2*stake)
-                self.getDealer().loseMoney(3/2*stake)
-            else:
-                showinfo('BlackJack','Victory: you get your bet back and win your bet once.')
-                self.getPlayer().winMoney(stake)
-                self.getPlayer().winMoney(stake)
-                self.getDealer().loseMoney(stake)
+            self.settleHand(stake)
 
         self.updateMoneyPlayer(moneyPlayer)
         self.updateMoneyDealer(moneyDealer)
@@ -829,7 +874,6 @@ generator = Generator()
 game = BlackJack(1500,100,10)
 
         # TODO provided the dealer has no ace, and before any further draw
-        # TODO only one card per ace when splitting a pair of aces
-        # TODO at most 2 splits per hand
+        # TODO allow re-splitting (at most 2 splits per hand)
         # TODO burn 5/6 cards right away
         # TODO Do not split a pair of tens, only pairs of 8s and aces
