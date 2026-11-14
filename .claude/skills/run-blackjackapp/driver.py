@@ -4,7 +4,7 @@ No global input (SendInput, pyautogui): nothing can land in another window, and
 the game can stay behind the terminal for the whole round.
 
 Usage (from the repository root, with the venv's python):
-    .venv\\Scripts\\python.exe .claude\\skills\\run-blackjackapp\\driver.py [--bet 20] [--actions 1] [--insurance] [--out DIR] [--launch-only]
+    .venv\\Scripts\\python.exe .claude\\skills\\run-blackjackapp\\driver.py [--bet 20] [--actions 1] [--insurance] [--rounds 1] [--out DIR] [--launch-only]
 
 Actions (one digit each, consumed at every "Choose an action" prompt):
     1 Hit, 2 Stand, 3 Double, 4 Split, 5 Surrender. Once the list runs out -> 2.
@@ -201,6 +201,11 @@ def play_round(g, bet, actions, insurance=False):
     log('Clicking "Play"')
     g.press_main('left')
     d = g.dialog(30)
+    while cls(d) == '#32770':  # e.g. "Only N cards left: the dealer takes a new deck." before the bet
+        log(f'Message [{text(d)}]: ' + ' '.join(text(c) for c in children(d) if cls(c) == 'Static' and text(c)).strip())
+        g.shot('message')
+        g.msgbox(d, ('OK',))
+        d = g.dialog(30)
     g.shot('bet')
     log(f'Bet: {bet}')
     g.answer(d, bet)
@@ -214,8 +219,8 @@ def play_round(g, bet, actions, insurance=False):
             # Native box buttons follow the Windows language: "Oui"/"Yes", "Non"/"No".
             if msg == INSURANCE:
                 g.msgbox(d, ('Oui', 'Yes') if insurance else ('Non', 'No'))
-            else:
-                g.msgbox(d, ('OK',))
+            else:  # OK for information; Yes for any other question (such as splitting tens)
+                g.msgbox(d, ('OK', 'Oui', 'Yes'))
             if msg.startswith(ROUND_OVER):
                 break
         elif title == ACTION_PROMPT:
@@ -236,6 +241,7 @@ def main():
     p.add_argument('--actions', default='1', help='digits 1-5 played in order, then 2 (Stand)')
     p.add_argument('--out', default=os.path.join(tempfile.gettempdir(), 'blackjack-run'), help='screenshot folder')
     p.add_argument('--insurance', action='store_true', help='take insurance when the dealer shows an ace (declined by default)')
+    p.add_argument('--rounds', type=int, default=1, help='rounds to play in a row, each with the same bet and actions')
     p.add_argument('--launch-only', action='store_true', help='capture the welcome screen, then quit')
     a = p.parse_args()
 
@@ -243,7 +249,10 @@ def main():
     try:
         g.shot('welcome')
         if not a.launch_only:
-            play_round(g, a.bet, list(a.actions), a.insurance)
+            for r in range(a.rounds):
+                if a.rounds > 1:
+                    log(f'Round {r + 1}')
+                play_round(g, a.bet, list(a.actions), a.insurance)
         g.quit()
     finally:
         if g.proc.poll() is None:

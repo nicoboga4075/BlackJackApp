@@ -37,9 +37,14 @@ PYTHONIOENCODING=utf-8 .venv/Scripts/python .claude/skills/run-blackjackapp/driv
   (20 by default; the game accepts 10 up to the player's money, 100 at
   start), then plays one digit of `--actions` at each "Choose an action"
   prompt: 1 Hit, 2 Stand, 3 Double, 4 Split, 5 Surrender. After a split,
-  each hand asks again with only 1 to 3, so `--actions 432` splits, doubles
-  hand 1 and stands on hand 2. Once the list runs out, it plays 2. It declines insurance (`--insurance` takes it)
-  and answers "OK" to every message until "Round over", then quits.
+  each hand asks again with 1 to 3 (4 when it can be split again), so
+  `--actions 432` splits, doubles hand 1 and stands on hand 2. Once the list
+  runs out, it plays 2. It declines insurance (`--insurance` takes it),
+  answers "Yes" to any other question (such as splitting tens) and "OK" to
+  every message until "Round over", then quits.
+- `--rounds N` plays N rounds in a row with the same bet and actions; about
+  7 rounds at 10 € reach the "Only N cards left: the dealer takes a new deck."
+  message (`--bet 10 --actions 2 --rounds 8`).
 - The driver prints every game message to stdout (`Message [title]: …`).
   Screenshots go to `--out` (`%TEMP%\blackjack-run` by default), numbered
   `01_welcome.png`, `02_bet.png`… up to `NN_end.png`, with open dialogs
@@ -57,26 +62,32 @@ matches (`ACTION_PROMPT`, `INSURANCE`, `ROUND_OVER`) at the top of `driver.py`.
 
 The shuffle always deals the same cards, and the dealer never shows an ace.
 To test another deal, run the driver on a throwaway copy of the game whose
-`Deck.shuffle()` puts chosen cards on top (draw order: player, dealer, player,
-then the player's hits, then the dealer's second card; after a split: hand 1's
-second card and hits, then hand 2's):
+`Deck.draw()` deals chosen cards first (draw order: player, dealer, player,
+then the player's hits, then the dealer's second card; after a split: each
+hand's second card and hits, hand by hand):
 
 ```bash
 T="$TEMP/bjcopy"; rm -rf "$T"; mkdir -p "$T"
 cp -r BlackJack.py *.gif *.wav *.ico .claude "$T"/
 .venv/Scripts/python - "$T/BlackJack.py" <<'PY'
 import sys; p = sys.argv[1]; s = open(p, encoding='utf-8').read()
-a = "        self.cards = shuffle_cards(generator,self.cards) # rd.shuffle(self.cards)\n"
-b = a + "        top = [c for n in os.environ.get('BJ_FORCE_TOP', '').split(',') for c in self.cards if c.value+'_'+c.suit == n]\n        self.cards = top + [c for c in self.cards if not any(c is t for t in top)]\n"
-assert a in s; open(p, 'w', encoding='utf-8').write(s.replace(a, b))
+a = "    def draw(self):\n"
+b = a + "        global FORCE\n        if 'FORCE' not in globals(): FORCE = [n for n in os.environ.get('BJ_FORCE_TOP', '').split(',') if n]\n        if FORCE:\n            n = FORCE.pop(0); i = next(i for i, c in enumerate(self.cards) if c.value+'_'+c.suit == n); self.cards.insert(0, self.cards.pop(i))\n"
+assert s.count(a) == 1; s = s.replace(a, b)
+a = "        del(self.cards[:count])\n"
+b = "        keep = os.environ.get('BJ_FORCE_TOP', '').split(','); burnt = [c for c in self.cards if c.value+'_'+c.suit not in keep][:count]; self.cards = [c for c in self.cards if not any(c is t for t in burnt)]\n"
+assert s.count(a) == 1; open(p, 'w', encoding='utf-8').write(s.replace(a, b))
 PY
 BJ_FORCE_TOP=10_hearts,A_spades,9_clubs,K_hearts PYTHONIOENCODING=utf-8 .venv/Scripts/python "$T/.claude/skills/run-blackjackapp/driver.py" --bet 20 --actions 2 --insurance --out "$TEMP/bj-ins-bj"
-BJ_FORCE_TOP=8_hearts,6_spades,8_clubs,3_hearts,10_spades,10_hearts,10_clubs,7_diamonds PYTHONIOENCODING=utf-8 .venv/Scripts/python "$T/.claude/skills/run-blackjackapp/driver.py" --bet 20 --actions 432 --out "$TEMP/bj-split8"
+BJ_FORCE_TOP=8_hearts,6_spades,8_clubs,8_diamonds,10_spades,10_hearts,9_clubs,10_clubs,10_diamonds PYTHONIOENCODING=utf-8 .venv/Scripts/python "$T/.claude/skills/run-blackjackapp/driver.py" --bet 20 --actions 44222 --out "$TEMP/bj-resplit"
 ```
 
 The driver computes the game folder from its own path, so the copy's driver
-plays the copy. The patch compares cards by identity (`c is t`): `Card.__eq__`
-compares values only, so `in` would drop every card of the same value.
+plays the copy. The patch pulls each forced card out of the deck when it is
+drawn, and `Deck.burn()` skips the forced cards (without that, the default
+shuffle burns J♦, 10♦, K♠, A♦ and 5♣, and forcing one of them raises
+`StopIteration`). It finds cards by name, never with `in` or `remove()`:
+`Card.__eq__` compares values only.
 
 ## Run (human)
 
@@ -114,9 +125,10 @@ repository root.
   windows.
 - **Dialogs**: wait for a dialog to close (`wait_closed`) before looking for
   the next one, or you find the same one again.
-- **Deterministic shuffle**: every launch deals the same cards (Jack ♦,
-  King ♠ / 10 ♦, then Ace ♦ on a hit). Handy to reproduce a round, but a
-  single round does not explore rare cases: force a deal instead (see above).
+- **Deterministic shuffle**: every launch deals the same cards: the first 5
+  (J♦, 10♦, K♠, A♦, 5♣) are burnt, then 10♣ and 2♥ for the player, 6♦ for
+  the dealer. Handy to reproduce a round, but a single round does not explore
+  rare cases: force a deal instead (see above).
 - **First launch**: with a fresh `matplotlib`, the game prints "Matplotlib is
   building the font cache" and takes several seconds longer.
 
