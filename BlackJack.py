@@ -478,11 +478,13 @@ class BlackJack(object):
 
     ## Double down
 
-    def doubleChoice(self,initialBet,betPlayer,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount):
+    def doubleChoice(self,initialBet,betPlayer,moneyPlayer,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount):
         self.showGIF('double.gif','DOUBLE',True,2)
         showinfo('BlackJack',"You chose to double your bet. You will draw one last card.")
         self.getPlayer().addBet(initialBet)
         self.updateBetPlayer(betPlayer)
+        self.getPlayer().loseMoney(initialBet)
+        self.updateMoneyPlayer(moneyPlayer)
         PLAYER_CARD = self.getDeck().draw()
 
         if PLAYER_CARD!=None:
@@ -667,23 +669,21 @@ class BlackJack(object):
         self.getDeck().dealSound()
         self.showImage(Card().hideCard(),WIDTH_IMAGE+20,TOP_VERTICAL_CANVAS,'hidden')
 
-        # TODO: if the dealer has blackjack, insurance = True => if (player has blackjack) self.getPlayer().winself.getPlayer().winMoney(2*insuranceBet) and self.getDealer().winMoney(insuranceBet) ** insurance = False => self.getPlayer().loseMoney(insuranceBet)
-
-        # TODO: if insurance
+        insuranceBet = 0 # Half the initial bet if the player takes insurance, settled once the dealer's second card is known
 
         if(DEALER_CARD1.isAce()):
-            insurance = askyesno('BlackJack','Insurance?',parent=self.root)
-            insuranceBet = initialBet/2
-            if insurance:
-                self.getPlayer().addBet(initialBet/2)
+            if self.getPlayer().getMoney() < initialBet/2:
+                showinfo('BlackJack',"You do not have enough money to take insurance.")
+            elif askyesno('BlackJack','Insurance?',parent=self.root):
+                insuranceBet = initialBet/2
+                self.getPlayer().addBet(insuranceBet)
                 self.updateBetPlayer(betPlayer)
-            else:
-                pass
-
-        else:
-            pass
+                self.getPlayer().loseMoney(insuranceBet)
+                self.updateMoneyPlayer(moneyPlayer)
 
         time.sleep(1)
+
+        stake = initialBet # Amount settled at the end of the round, doubled by a double down
 
         if self.getPlayer().hasBlackJackRegular():
             PlaySound(resource_path('blackjack.wav'),SND_FILENAME)
@@ -692,7 +692,7 @@ class BlackJack(object):
             self.dealerTurn(cardsRemaining,TOP_VERTICAL_CANVAS,scoreDealer,relativeCount)
 
         else:
-# TODO: prevent clicking split without a pair and double when not possible -> not enough money + double the bet if insurance?
+# TODO: prevent clicking split without a pair
             hasPairs = PLAYER_CARD1 == PLAYER_CARD2
 
             split = False
@@ -705,6 +705,10 @@ class BlackJack(object):
 
                 if choice is None or choice == 5:
                     self.surrenderChoice(initialBet,betPlayer,moneyPlayer,moneyDealer)
+                    if insuranceBet: # The dealer's second card is never drawn: the insurance is lost
+                        showinfo('BlackJack','Insurance: you lose your insurance.')
+                        self.getDealer().winMoney(insuranceBet)
+                        self.updateMoneyDealer(moneyDealer)
                     showinfo('BlackJack','Round over')
                     self.initPlayButton()
                     self.initQuitButton()
@@ -719,7 +723,14 @@ class BlackJack(object):
                     break
 
                 if choice ==3: # Double down
-                    self.doubleChoice(initialBet,betPlayer,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount)
+                    if self.getPlayer().getCardsCount() > 2:
+                        showinfo('BlackJack',"You can only double your bet on your first two cards.")
+                        continue
+                    if self.getPlayer().getMoney() < initialBet:
+                        showinfo('BlackJack',"You do not have enough money to double your bet.")
+                        continue
+                    self.doubleChoice(initialBet,betPlayer,moneyPlayer,cardsRemaining,MIDDLE_VERTICAL_CANVAS,scorePlayer,relativeCount)
+                    stake = 2*initialBet
                     break
 
                 if choice == 4 and hasPairs: # Split pairs
@@ -772,16 +783,25 @@ class BlackJack(object):
         self.getPlayer().resetBet()
         self.updateBetPlayer(betPlayer)
 
+        if insuranceBet:
+            if self.getDealer().hasBlackJackRegular():
+                showinfo('BlackJack','Insurance: the dealer has a BlackJack. You get your insurance back and win twice your insurance.')
+                self.getPlayer().winMoney(3*insuranceBet)
+                self.getDealer().loseMoney(2*insuranceBet)
+            else:
+                showinfo('BlackJack','Insurance: the dealer has no BlackJack. You lose your insurance.')
+                self.getDealer().winMoney(insuranceBet)
+
         if self.tiePlayer():
             PlaySound(resource_path('bust.wav'),SND_FILENAME)
             self.showGIF('tie.gif','TIE',True,2)
             showinfo('BlackJack','Tie: you get your bet back.')
-            self.getPlayer().winMoney(initialBet)
+            self.getPlayer().winMoney(stake)
 
         elif self.losePlayer():
             PlaySound(resource_path('defeat.wav'),SND_FILENAME)
             showerror('BlackJack','Defeat: you lose your bet.')
-            self.getDealer().winMoney(initialBet)
+            self.getDealer().winMoney(stake)
 
         else:
             PlaySound(resource_path('applause.wav'),SND_FILENAME)
@@ -790,14 +810,14 @@ class BlackJack(object):
 
             if self.getPlayer().hasBlackJackRegular() and not(split):
                 showinfo('BlackJack','Victory: you got a BlackJack. You get your bet back and win 1.5 times your bet.')
-                self.getPlayer().winMoney(initialBet)
-                self.getPlayer().winMoney(3/2*initialBet)
-                self.getDealer().loseMoney(3/2*initialBet)
+                self.getPlayer().winMoney(stake)
+                self.getPlayer().winMoney(3/2*stake)
+                self.getDealer().loseMoney(3/2*stake)
             else:
                 showinfo('BlackJack','Victory: you get your bet back and win your bet once.')
-                self.getPlayer().winMoney(initialBet)
-                self.getPlayer().winMoney(initialBet)
-                self.getDealer().loseMoney(initialBet)
+                self.getPlayer().winMoney(stake)
+                self.getPlayer().winMoney(stake)
+                self.getDealer().loseMoney(stake)
 
         self.updateMoneyPlayer(moneyPlayer)
         self.updateMoneyDealer(moneyDealer)

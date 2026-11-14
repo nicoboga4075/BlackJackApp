@@ -24,6 +24,7 @@ python BlackJack.py
 - **Deterministic shuffle**: `Generator()` is a fixed-seed LCG, instantiated as the global `generator`. `shuffle_cards` and `get_py_iid` (which gives a unique name to the canvas attributes keeping the `PhotoImage`s alive) consume the same stream, so the card order is reproducible from one launch to the next. The deck is never rebuilt between rounds (`resetDeck()` is never called): only the remaining cards are reshuffled.
 - **`BlackJack`**: controller and view at once. `__init__` builds the window and starts `mainloop()`. A whole round runs inside a single synchronous call to `play()` (the "Play" button), which chains betting, dealing, the player's choices (`askinteger` with actions 1 to 5), `dealerTurn()` (draws up to 17), then settlement through `winPlayer` / `losePlayer` / `tiePlayer`.
 - **UI**: everything is drawn on a single `Canvas`. The displayed texts (money, bet, score, remaining cards, RC) are canvas item IDs, passed to the `update*` methods and `updateAfterHit`. Animations go through `showGIF(..., autoDestruction=True)`, which calls `time.sleep` on the UI thread; the game flow relies on these blocking calls and on modal dialogs.
+- **Betting**: the round is settled on `stake` (`initialBet`, doubled by a double down, allowed on the first two cards only). Insurance (`insuranceBet`, half the bet) is debited when taken and settled with the round, since the dealer's second card is only drawn in `dealerTurn()`: paid 2:1 on a dealer BlackJack, lost otherwise or on surrender.
 - Beware, `showGIF(image, tag, autoDestruction=False, seconds=1)` is sometimes called with its positional arguments swapped (`hitChoice` passes `2, True`).
 
 ## Commits
@@ -42,4 +43,4 @@ One emoji per commit: pick the one for the main intent of the change. Commit onl
 
 ## Incomplete features
 
-Splitting is only sketched (the code playing both hands is commented out), the insurance bet is added but never settled, doubling raises the displayed bet without debiting the player or changing the payout, and both the end of the file and `play()` contain `TODO`s about the remaining rules (split limits, burnt cards, empty deck, etc.).
+Splitting is only sketched (the code playing both hands is commented out), and both the end of the file and `play()` contain `TODO`s about the remaining rules (split limits, burnt cards, empty deck, etc.).

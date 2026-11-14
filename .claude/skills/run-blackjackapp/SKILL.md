@@ -37,8 +37,8 @@ PYTHONIOENCODING=utf-8 .venv/Scripts/python .claude/skills/run-blackjackapp/driv
   (20 by default; the game accepts 10 up to the player's money, 100 at
   start), then plays one digit of `--actions` at each "Choose an action"
   prompt: 1 Hit, 2 Stand, 3 Double, 4 Split, 5 Surrender. Once the
-  list runs out, it plays 2. It declines insurance and answers "OK" to every
-  message until "Round over", then quits.
+  list runs out, it plays 2. It declines insurance (`--insurance` takes it)
+  and answers "OK" to every message until "Round over", then quits.
 - The driver prints every game message to stdout (`Message [title]: …`).
   Screenshots go to `--out` (`%TEMP%\blackjack-run` by default), numbered
   `01_welcome.png`, `02_bet.png`… up to `NN_end.png`, with open dialogs
@@ -51,6 +51,29 @@ For another scenario, `Game` provides `shot`, `press_main`, `answer`,
 `msgbox`, `dialog` and `quit`: write a variant of `play_round`. If you change a
 dialog title or message in `BlackJack.py`, update the strings the driver
 matches (`ACTION_PROMPT`, `INSURANCE`, `ROUND_OVER`) at the top of `driver.py`.
+
+### Forcing a deal (insurance, dealer BlackJack, small cards…)
+
+The shuffle always deals the same cards, and the dealer never shows an ace.
+To test another deal, run the driver on a throwaway copy of the game whose
+`Deck.shuffle()` puts chosen cards on top (draw order: player, dealer, player,
+then the player's hits, then the dealer's second card):
+
+```bash
+T="$TEMP/bjcopy"; rm -rf "$T"; mkdir -p "$T"
+cp -r BlackJack.py *.gif *.wav *.ico .claude "$T"/
+.venv/Scripts/python - "$T/BlackJack.py" <<'PY'
+import sys; p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+a = "        self.cards = shuffle_cards(generator,self.cards) # rd.shuffle(self.cards)\n"
+b = a + "        top = [c for n in os.environ.get('BJ_FORCE_TOP', '').split(',') for c in self.cards if c.value+'_'+c.suit == n]\n        self.cards = top + [c for c in self.cards if not any(c is t for t in top)]\n"
+assert a in s; open(p, 'w', encoding='utf-8').write(s.replace(a, b))
+PY
+BJ_FORCE_TOP=10_hearts,A_spades,9_clubs,K_hearts PYTHONIOENCODING=utf-8 .venv/Scripts/python "$T/.claude/skills/run-blackjackapp/driver.py" --bet 20 --actions 2 --insurance --out "$TEMP/bj-ins-bj"
+```
+
+The driver computes the game folder from its own path, so the copy's driver
+plays the copy. The patch compares cards by identity (`c is t`): `Card.__eq__`
+compares values only, so `in` would drop every card of the same value.
 
 ## Run (human)
 
@@ -90,7 +113,7 @@ repository root.
   the next one, or you find the same one again.
 - **Deterministic shuffle**: every launch deals the same cards (Jack ♦,
   King ♠ / 10 ♦, then Ace ♦ on a hit). Handy to reproduce a round, but a
-  single round does not explore rare cases.
+  single round does not explore rare cases: force a deal instead (see above).
 - **First launch**: with a fresh `matplotlib`, the game prints "Matplotlib is
   building the font cache" and takes several seconds longer.
 

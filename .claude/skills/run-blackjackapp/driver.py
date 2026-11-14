@@ -4,7 +4,7 @@ No global input (SendInput, pyautogui): nothing can land in another window, and
 the game can stay behind the terminal for the whole round.
 
 Usage (from the repository root, with the venv's python):
-    .venv\\Scripts\\python.exe .claude\\skills\\run-blackjackapp\\driver.py [--bet 20] [--actions 1] [--out DIR] [--launch-only]
+    .venv\\Scripts\\python.exe .claude\\skills\\run-blackjackapp\\driver.py [--bet 20] [--actions 1] [--insurance] [--out DIR] [--launch-only]
 
 Actions (one digit each, consumed at every "Choose an action" prompt):
     1 Hit, 2 Stand, 3 Double, 4 Split, 5 Surrender. Once the list runs out -> 2.
@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parents[3]
 
 # Strings from the game's UI, matched against its dialogs.
 ACTION_PROMPT = 'Choose an action'
-INSURANCE = 'Insurance'
+INSURANCE = 'Insurance?'
 ROUND_OVER = ('Round over', 'You have spent', 'Your money is', 'The casino')
 
 
@@ -197,7 +197,7 @@ def log(msg):
     print(msg, flush=True)
 
 
-def play_round(g, bet, actions):
+def play_round(g, bet, actions, insurance=False):
     log('Clicking "Play"')
     g.press_main('left')
     d = g.dialog(30)
@@ -211,8 +211,11 @@ def play_round(g, bet, actions):
             msg = ' '.join(text(c) for c in children(d) if cls(c) == 'Static' and text(c)).strip()
             log(f'Message [{title}]: {msg}')
             g.shot('message')
-            # Native box buttons follow the Windows language: "Non" or "No".
-            g.msgbox(d, ('Non', 'No') if INSURANCE in msg else ('OK',))
+            # Native box buttons follow the Windows language: "Oui"/"Yes", "Non"/"No".
+            if msg == INSURANCE:
+                g.msgbox(d, ('Oui', 'Yes') if insurance else ('Non', 'No'))
+            else:
+                g.msgbox(d, ('OK',))
             if msg.startswith(ROUND_OVER):
                 break
         elif title == ACTION_PROMPT:
@@ -232,6 +235,7 @@ def main():
     p.add_argument('--bet', default='20', help='initial bet (10 up to the player\'s money, 100 at start)')
     p.add_argument('--actions', default='1', help='digits 1-5 played in order, then 2 (Stand)')
     p.add_argument('--out', default=os.path.join(tempfile.gettempdir(), 'blackjack-run'), help='screenshot folder')
+    p.add_argument('--insurance', action='store_true', help='take insurance when the dealer shows an ace (declined by default)')
     p.add_argument('--launch-only', action='store_true', help='capture the welcome screen, then quit')
     a = p.parse_args()
 
@@ -239,7 +243,7 @@ def main():
     try:
         g.shot('welcome')
         if not a.launch_only:
-            play_round(g, a.bet, list(a.actions))
+            play_round(g, a.bet, list(a.actions), a.insurance)
         g.quit()
     finally:
         if g.proc.poll() is None:
